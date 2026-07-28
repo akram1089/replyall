@@ -1,0 +1,17 @@
+node_modules
+.next
+.git
+.github
+.env
+.env.*
+!.env.example
+__tests__
+coverage
+*.md
+!README.md
+.vercel
+.DS_Store
+_vps_*.py
+deploy
+*.log
+temp-clone

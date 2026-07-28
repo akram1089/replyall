@@ -1,35 +1,82 @@
-# OpenReply — Local Development Services
-# Run: docker-compose up -d
+# OpenReply — full Docker stack (web, worker, Postgres, Redis)
+# Host nginx proxies https://openreply.spikeiq.cloud → 127.0.0.1:3010
 
 services:
   postgres:
-    image: postgres:16
+    image: postgres:16-alpine
+    restart: unless-stopped
     environment:
       POSTGRES_DB: openreply
-      POSTGRES_USER: postgres
-      POSTGRES_PASSWORD: postgres
-    ports:
-      - "5432:5432"
+      POSTGRES_USER: openreply
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
     volumes:
       - pgdata:/var/lib/postgresql/data
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U postgres"]
+      test: ["CMD-SHELL", "pg_isready -U openreply -d openreply"]
       interval: 5s
       timeout: 5s
-      retries: 5
+      retries: 10
+    networks:
+      - openreply
 
   redis:
     image: redis:7-alpine
-    ports:
-      - "6379:6379"
+    restart: unless-stopped
+    command: ["redis-server", "--appendonly", "yes"]
     volumes:
       - redisdata:/data
     healthcheck:
       test: ["CMD", "redis-cli", "ping"]
       interval: 5s
-      timeout: 5s
-      retries: 5
+      timeout: 3s
+      retries: 10
+    networks:
+      - openreply
+
+  web:
+    build: .
+    image: openreply:latest
+    restart: unless-stopped
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    env_file:
+      - .env
+    environment:
+      DATABASE_URL: postgresql://openreply:${POSTGRES_PASSWORD}@postgres:5432/openreply
+      REDIS_URL: redis://redis:6379
+      RUN_MIGRATIONS: "1"
+    ports:
+      - "127.0.0.1:3010:3000"
+    networks:
+      - openreply
+
+  worker:
+    image: openreply:latest
+    restart: unless-stopped
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      web:
+        condition: service_started
+    env_file:
+      - .env
+    environment:
+      DATABASE_URL: postgresql://openreply:${POSTGRES_PASSWORD}@postgres:5432/openreply
+      REDIS_URL: redis://redis:6379
+      RUN_MIGRATIONS: "0"
+    command: ["npx", "tsx", "worker/dm-worker.ts"]
+    networks:
+      - openreply
 
 volumes:
   pgdata:
   redisdata:
+
+networks:
+  openreply:
+    driver: bridge
