@@ -7,7 +7,7 @@ RUN apt-get update \
 
 FROM base AS deps
 COPY package.json package-lock.json ./
-RUN npm ci
+RUN npm install
 
 FROM base AS builder
 COPY --from=deps /app/node_modules ./node_modules
@@ -23,7 +23,7 @@ ENV HOSTNAME=0.0.0.0
 
 COPY package.json package-lock.json ./
 # prisma CLI is a devDependency but needed for migrate deploy; tsx runs the worker.
-RUN npm ci --omit=dev \
+RUN npm install --omit=dev \
   && npm install -g prisma@7.8.0 tsx@4.22.1 \
   && npm install dotenv@17.4.2 --no-save \
   && npm cache clean --force
