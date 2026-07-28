@@ -54,6 +54,10 @@ export default function SettingsPage() {
   const [inviteEmail, setInviteEmail] = useState("");
   const [inviteRole, setInviteRole] = useState<"ADMIN" | "MEMBER">("MEMBER");
   const [memberError, setMemberError] = useState<string | null>(null);
+  const [currentPassword, setCurrentPassword] = useState("");
+  const [newPassword, setNewPassword] = useState("");
+  const [passwordError, setPasswordError] = useState<string | null>(null);
+  const [passwordSuccess, setPasswordSuccess] = useState<string | null>(null);
 
   useEffect(() => {
     Promise.all([
@@ -114,6 +118,27 @@ export default function SettingsPage() {
       body: JSON.stringify({ invitationId }),
     });
     await refreshMembers();
+    setBusy(null);
+  }
+
+  async function savePassword(event: React.FormEvent) {
+    event.preventDefault();
+    setPasswordError(null);
+    setPasswordSuccess(null);
+    setBusy("password");
+    const res = await fetch("/api/account/password", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ currentPassword, newPassword }),
+    });
+    const payload = await res.json();
+    if (payload.success) {
+      setCurrentPassword("");
+      setNewPassword("");
+      setPasswordSuccess("Password updated.");
+    } else {
+      setPasswordError(payload.error ?? "Could not save password");
+    }
     setBusy(null);
   }
 
@@ -310,6 +335,45 @@ export default function SettingsPage() {
             )}
           </form>
         )}
+      </section>
+
+      <section className="panel rounded p-6">
+        <h2 className="text-base font-semibold mb-2">Password</h2>
+        <p className="text-xs text-muted mb-6">
+          Change the password you use to log in.
+        </p>
+        <form onSubmit={savePassword} className="space-y-3">
+          <input
+            type="password"
+            value={currentPassword}
+            onChange={(event) => setCurrentPassword(event.target.value)}
+            placeholder="Current password"
+            autoComplete="current-password"
+            required
+            className="w-full rounded border border-border bg-surface px-4 py-2 text-sm text-foreground outline-none transition-colors focus:border-accent/40"
+          />
+          <input
+            type="password"
+            value={newPassword}
+            onChange={(event) => setNewPassword(event.target.value)}
+            placeholder="New password (min 8 characters)"
+            autoComplete="new-password"
+            required
+            minLength={8}
+            className="w-full rounded border border-border bg-surface px-4 py-2 text-sm text-foreground outline-none transition-colors focus:border-accent/40"
+          />
+          {passwordError && <p className="text-sm text-error">{passwordError}</p>}
+          {passwordSuccess && (
+            <p className="text-sm text-success">{passwordSuccess}</p>
+          )}
+          <button
+            type="submit"
+            disabled={busy === "password"}
+            className="rounded bg-accent px-4 py-2 text-sm font-semibold text-white transition-colors hover:bg-accent-hover disabled:opacity-50"
+          >
+            {busy === "password" ? "Saving..." : "Update password"}
+          </button>
+        </form>
       </section>
 
       <section className="panel rounded p-6">

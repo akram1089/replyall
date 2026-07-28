@@ -1,7 +1,8 @@
 import NextAuth, { type NextAuthConfig } from "next-auth";
-import Resend from "next-auth/providers/resend";
+import Credentials from "next-auth/providers/credentials";
 import { PrismaAdapter } from "@auth/prisma-adapter";
 import { prisma } from "@/lib/db/client";
+import { verifyPassword } from "@/lib/password";
 import { ensureWorkspaceForUser, getPrimaryWorkspace } from "@/lib/workspace";
 
 type AdapterPrismaClient = Parameters<typeof PrismaAdapter>[0];
@@ -9,32 +10,50 @@ type AdapterPrismaClient = Parameters<typeof PrismaAdapter>[0];
 export const authConfig = {
   adapter: PrismaAdapter(prisma as unknown as AdapterPrismaClient),
   providers: [
-    Resend({
-      apiKey: process.env.RESEND_API_KEY ?? "missing-resend-api-key",
-      from: process.env.EMAIL_FROM ?? "OpenReply <login@example.com>",
+    Credentials({
+      id: "credentials",
+      name: "Email and Password",
+      credentials: {
+        email: { label: "Email", type: "email" },
+        password: { label: "Password", type: "password" },
+      },
+      async authorize(credentials) {
+        const email = String(credentials?.email ?? "")
+          .trim()
+          .toLowerCase();
+        const password = String(credentials?.password ?? "");
+        if (!email || !password) return null;
+
+        const user = await prisma.user.findUnique({ where: { email } });
+        if (!user?.password) return null;
+
+        const matches = await verifyPassword(password, user.password);
+        if (!matches) return null;
+
+        return { id: user.id, email: user.email, name: user.name };
+      },
     }),
   ],
   callbacks: {
-    async session({ session, user }) {
-      if (session.user) {
-        session.user.id = user.id;
+    async jwt({ token, user }) {
+      if (user?.id) {
+        token.sub = user.id;
+      }
+      return token;
+    },
+    async session({ session, token }) {
+      if (session.user && token.sub) {
+        session.user.id = token.sub;
       }
       return session;
     },
   },
-  events: {
-    async createUser({ user }) {
-      if (user.id) {
-        await ensureWorkspaceForUser(user.id, user.email);
-      }
-    },
-  },
   pages: {
     signIn: "/login",
-    verifyRequest: "/verify-request",
   },
   session: {
-    strategy: "database",
+    // Credentials provider requires JWT sessions.
+    strategy: "jwt",
   },
   trustHost: true,
   secret: process.env.NEXTAUTH_SECRET,
